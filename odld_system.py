@@ -13,8 +13,6 @@ from westpa.core.systems import WESTSystem
 from westpa.core.binning import RectilinearBinMapper
 from westpa.core.binning import RecursiveBinMapper
 
-from adaptive import MABBinMapper
-
 PI = np.pi
 log = logging.getLogger("westpa.rc")
 
