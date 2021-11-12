@@ -20,7 +20,7 @@ pcoord_len = 21
 pcoord_dtype = np.float32
 # THESE ARE THE FOUR THINGS YOU SHOULD CHANGE
 bintargetcount = 10  # number of walkers per bin
-nbins = [10]  # You will have prod(binsperdim)+numberofdim*(2*splitIsolated) bins total
+nbins = [10,10]  # You will have prod(binsperdim)+numberofdim*(2*splitIsolated) bins total
 pcoordlength = 2  # length of the pcoord
 
 
@@ -30,9 +30,9 @@ class ODLDPropagator(WESTPropagator):
 
         self.coord_len = pcoord_len
         self.coord_dtype = pcoord_dtype
-        self.coord_ndim = 1
+        self.coord_ndim = 2
 
-        self.initial_pcoord = np.array([9.5], dtype=self.coord_dtype)
+        self.initial_pcoord = np.array([9.5,9.5], dtype=self.coord_dtype)
 
         self.sigma = 0.001 ** (0.5)  # friction coefficient
 
@@ -40,6 +40,7 @@ class ODLDPropagator(WESTPropagator):
         self.B = 10
         self.C = 0.5
         self.x0 = 1
+        self.y0 = 1
 
         # Implement a reflecting boundary at this x value
         # (or None, for no reflection)
@@ -56,7 +57,7 @@ class ODLDPropagator(WESTPropagator):
 
     def propagate(self, segments):
 
-        A, B, C, x0 = self.A, self.B, self.C, self.x0
+        A, B, C, x0, y0 = self.A, self.B, self.C, self.x0, self.y0
 
         n_segs = len(segments)
 
@@ -78,35 +79,56 @@ class ODLDPropagator(WESTPropagator):
         )
         for istep in range(1, coord_len):
             x = coords[:, istep - 1, 0]
+            y = coords[:, istep - 1, 1]
 
             xarg = twopi_by_A * (x - x0)
+            yarg = twopi_by_A * (y - y0)
 
             eCx = np.exp(C * x)
             eCx_less_one = eCx - 1.0
+            eCy = np.exp(C * y)
+            eCy_less_one = eCy - 1.0
 
-            all_displacements[:, istep, 0] = displacements = random_normal(
+            all_displacements[:, istep, 0] = xdisplacements = random_normal(
                 scale=sigma, size=(n_segs,)
             )
-            grad = (
+            all_displacements[:, istep, 1] = ydisplacements = random_normal(
+                scale=sigma, size=(n_segs,)
+            )
+
+            gradx = (
                 half_B
                 / (eCx_less_one * eCx_less_one)
                 * (twopi_by_A * eCx_less_one * np.sin(xarg) + C * eCx * np.cos(xarg))
             )
 
-            newx = x - gradfactor * grad + displacements
+            grady = (
+                half_B
+                / (eCy_less_one * eCy_less_one)
+                * (twopi_by_A * eCy_less_one * np.sin(yarg) + C * eCy * np.cos(yarg))
+            )
+
+            newx = x - gradfactor * gradx + xdisplacements
+            newy = y - gradfactor * grady + ydisplacements
+
             if reflect_at is not None:
                 # Anything that has moved beyond reflect_at must move back that much
 
                 # boolean array of what to reflect
-                to_reflect = newx > reflect_at
+                to_reflectx = newx > reflect_at
+                to_reflecty = newy > reflect_at
 
                 # how far the things to reflect are beyond our boundary
-                reflect_by = newx[to_reflect] - reflect_at
+                reflect_byx = newx[to_reflectx] - reflect_at
+                reflect_byy = newy[to_reflecty] - reflect_at
 
                 # subtract twice how far they exceed the boundary by
                 # puts them the same distance from the boundary, on the other side
-                newx[to_reflect] -= 2 * reflect_by
+                newx[to_reflectx] -= 2 * reflect_byx
+                newy[to_reflecty] -= 2 * reflect_byy
+
             coords[:, istep, 0] = newx
+            coords[:, istep, 1] = newy
 
         for iseg, segment in enumerate(segments):
             segment.pcoord[...] = coords[iseg, :]
