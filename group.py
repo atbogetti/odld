@@ -8,12 +8,13 @@ log.debug('loading module %r' % __name__)
 
 def kmeans(coords, n_clusters, splitting):
     X = numpy.array(coords)
-    X = X.reshape(-1,1)
+    if X.shape[0] == 1:
+        X = X.reshape(-1,1)
     km = cluster.KMeans(n_clusters=n_clusters).fit(X)   
     cluster_centers_indices = km.cluster_centers_
     labels = km.labels_
     if splitting:
-        print("cluster centers:", numpy.sort(cluster_centers_indices.flatten()))
+        print("cluster centers:", numpy.sort(cluster_centers_indices))
     return labels
 
 def affinity_propagation(coords, n_clusters, splitting):
