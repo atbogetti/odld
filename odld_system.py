@@ -30,9 +30,9 @@ class ODLDPropagator(WESTPropagator):
 
         self.coord_len = pcoord_len
         self.coord_dtype = pcoord_dtype
-        self.coord_ndim = 1
+        self.coord_ndim = 2
 
-        self.initial_pcoord = np.array([9.5], dtype=self.coord_dtype)
+        self.initial_pcoord = np.array([9.5, 9.5], dtype=self.coord_dtype)
 
         self.sigma = 0.001 ** (0.5)  # friction coefficient
 
@@ -40,6 +40,7 @@ class ODLDPropagator(WESTPropagator):
         self.B = 30
         self.C = 0.5
         self.x0 = 1
+        self.y0 = 1
 
         # Implement a reflecting boundary at this x value
         # (or None, for no reflection)
@@ -56,7 +57,7 @@ class ODLDPropagator(WESTPropagator):
 
     def propagate(self, segments):
 
-        A, B, C, x0 = self.A, self.B, self.C, self.x0
+        A, B, C, x0, y0 = self.A, self.B, self.C, self.x0, self.y0
 
         n_segs = len(segments)
 
@@ -66,6 +67,7 @@ class ODLDPropagator(WESTPropagator):
 
         for iseg, segment in enumerate(segments):
             coords[iseg, 0] = segment.pcoord[0]
+            coords[iseg, 1] = segment.pcoord[1]
 
         twopi_by_A = 2 * PI / A
         half_B = B / 2
@@ -78,35 +80,53 @@ class ODLDPropagator(WESTPropagator):
         )
         for istep in range(1, coord_len):
             x = coords[:, istep - 1, 0]
+            y = coords[:, istep - 1, 1]
 
             xarg = twopi_by_A * (x - x0)
+            yarg = twopi_by_A * (y - y0)
 
             eCx = np.exp(C * x)
+            eCy = np.exp(C * y)
             eCx_less_one = eCx - 1.0
+            eCy_less_one = eCy - 1.0
 
-            all_displacements[:, istep, 0] = displacements = random_normal(
+            all_displacements[:, istep, 0] = xdisplacements = random_normal(
                 scale=sigma, size=(n_segs,)
             )
-            grad = (
+            all_displacements[:, istep, 1] = ydisplacements = random_normal(
+                scale=sigma, size=(n_segs,)
+            )
+            xgrad = (
                 half_B
                 / (eCx_less_one * eCx_less_one)
                 * (twopi_by_A * eCx_less_one * np.sin(xarg) + C * eCx * np.cos(xarg))
             )
 
-            newx = x - gradfactor * grad + displacements
+            ygrad = (
+                half_B
+                / (eCy_less_one * eCy_less_one)
+                * (twopi_by_A * eCy_less_one * np.sin(yarg) + C * eCy * np.cos(yarg))
+            )
+
+            newx = x - gradfactor * xgrad + xdisplacements
+            newy = y - gradfactor * ygrad + ydisplacements
             if reflect_at is not None:
                 # Anything that has moved beyond reflect_at must move back that much
 
                 # boolean array of what to reflect
-                to_reflect = newx > reflect_at
+                xto_reflect = newx > reflect_at
+                yto_reflect = newy > reflect_at
 
                 # how far the things to reflect are beyond our boundary
-                reflect_by = newx[to_reflect] - reflect_at
+                xreflect_by = newx[xto_reflect] - reflect_at
+                yreflect_by = newy[yto_reflect] - reflect_at
 
                 # subtract twice how far they exceed the boundary by
                 # puts them the same distance from the boundary, on the other side
-                newx[to_reflect] -= 2 * reflect_by
+                newx[xto_reflect] -= 2 * xreflect_by
+                newy[yto_reflect] -= 2 * yreflect_by
             coords[:, istep, 0] = newx
+            coords[:, istep, 1] = newy
 
         for iseg, segment in enumerate(segments):
             segment.pcoord[...] = coords[iseg, :]
